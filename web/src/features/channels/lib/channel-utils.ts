@@ -22,6 +22,9 @@ import { formatTimestampToDate } from '@/lib/format'
 import {
   CHANNEL_STATUS_CONFIG,
   CHANNEL_TYPES,
+  CHANNEL_TYPE_SENSENOVA,
+  CHANNEL_TYPE_XIAOMI_MIMO_API,
+  CHANNEL_TYPE_XIAOMI_MIMO_PLAN,
   MULTI_KEY_STATUS_CONFIG,
   RESPONSE_TIME_CONFIG,
   RESPONSE_TIME_THRESHOLDS,
@@ -71,6 +74,9 @@ export function getChannelTypeIcon(type: number): string {
     39: 'Cloudflare', // Cloudflare
 
     // Chinese providers
+    [CHANNEL_TYPE_SENSENOVA]: 'SenseNova',
+    [CHANNEL_TYPE_XIAOMI_MIMO_PLAN]: 'XiaomiMiMo',
+    [CHANNEL_TYPE_XIAOMI_MIMO_API]: 'XiaomiMiMo',
     15: 'Baidu', // Baidu
     46: 'Baidu', // Baidu V2
     16: 'Zhipu', // Zhipu

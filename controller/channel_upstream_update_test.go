@@ -18,6 +18,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSenseNovaModelDiscoveryListsTokenPlanTextModels(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/models", r.URL.Path)
+		assert.Equal(t, "Bearer sk-sensenova-test", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"sensenova-6.8-flash-lite","output_modalities":["text"],"businesses":["tokenplan","metered"]},
+			{"id":"sensenova-u1.5-lite","output_modalities":["image"],"businesses":["tokenplan"]},
+			{"id":"metered-only","output_modalities":["text"],"businesses":["metered"]},
+			{"id":"kimi-k3","output_modalities":["text"],"businesses":["tokenplan"]}
+		]}`))
+	}))
+	defer server.Close()
+
+	baseURL := server.URL + "/v1/"
+	channel := &model.Channel{Type: constant.ChannelTypeSenseNova, BaseURL: &baseURL, Key: "sk-sensenova-test"}
+	models, err := fetchChannelUpstreamModelIDs(channel)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"sensenova-6.8-flash-lite", "kimi-k3"}, models)
+}
+
 func newAdvancedCustomModelListChannel(baseURL string, key string, upstreamPath string, auth *dto.AdvancedCustomRouteAuth) *model.Channel {
 	config := &dto.AdvancedCustomConfig{
 		Routes: []dto.AdvancedCustomRoute{

@@ -588,6 +588,10 @@ func (channel *Channel) GetBaseURL() string {
 	if url == "" {
 		url = constant.GetChannelBaseURL(channel.Type)
 	}
+	switch channel.Type {
+	case constant.ChannelTypeXiaomiMiMoPlan, constant.ChannelTypeXiaomiMiMoAPI, constant.ChannelTypeSenseNova:
+		url = strings.TrimSuffix(strings.TrimRight(url, "/"), "/v1")
+	}
 	return url
 }
 

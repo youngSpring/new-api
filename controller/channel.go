@@ -30,12 +30,14 @@ import (
 )
 
 type OpenAIModel struct {
-	ID         string         `json:"id"`
-	Object     string         `json:"object"`
-	Created    int64          `json:"created"`
-	OwnedBy    string         `json:"owned_by"`
-	Metadata   map[string]any `json:"metadata,omitempty"`
-	Permission []struct {
+	ID               string         `json:"id"`
+	Object           string         `json:"object"`
+	Created          int64          `json:"created"`
+	OwnedBy          string         `json:"owned_by"`
+	Metadata         map[string]any `json:"metadata,omitempty"`
+	OutputModalities []string       `json:"output_modalities,omitempty"`
+	Businesses       []string       `json:"businesses,omitempty"`
+	Permission       []struct {
 		ID                 string `json:"id"`
 		Object             string `json:"object"`
 		Created            int64  `json:"created"`
@@ -676,6 +678,15 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	}
 	if channel.Type == constant.ChannelTypeSGLang && strings.TrimSpace(channel.GetBaseURL()) == "" {
 		return fmt.Errorf("SGLang channel base URL cannot be empty")
+	}
+	if channel.Type == constant.ChannelTypeXiaomiMiMoPlan || channel.Type == constant.ChannelTypeXiaomiMiMoAPI {
+		for key := range strings.SplitSeq(strings.TrimSpace(channel.Key), "\n") {
+			if key = strings.TrimSpace(key); key != "" {
+				if err := validateMiMoKey(channel.Type, key); err != nil {
+					return err
+				}
+			}
+		}
 	}
 
 	// 如果是添加操作，检查 channel 和 key 是否为空

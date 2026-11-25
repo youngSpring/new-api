@@ -457,6 +457,9 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 	}
 	key = strings.TrimSpace(key)
 
+	if err := validateMiMoKey(channel.Type, key); err != nil {
+		return nil, err
+	}
 	headers, err := buildFetchModelsHeaders(channel, key)
 	if err != nil {
 		return nil, sanitizeFetchModelsError(err, key)
@@ -470,6 +473,11 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 	var result OpenAIModelsResponse
 	if err := common.Unmarshal(body, &result); err != nil {
 		return nil, err
+	}
+	if channel.Type == constant.ChannelTypeSenseNova {
+		result.Data = slices.DeleteFunc(result.Data, func(item OpenAIModel) bool {
+			return !slices.Contains(item.OutputModalities, "text") || !slices.Contains(item.Businesses, "tokenplan")
+		})
 	}
 	ids := lo.Map(result.Data, func(item OpenAIModel, _ int) string {
 		if channel.Type == constant.ChannelTypeGemini {

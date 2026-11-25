@@ -807,6 +807,12 @@ func (a *Adaptor) GetModelList() []string {
 		return xinference.ModelList
 	case constant.ChannelTypeOpenRouter:
 		return openrouter.ModelList
+	case constant.ChannelTypeXiaomiMiMoPlan:
+		return []string{"mimo-v2.6-flash", "mimo-v2.6-pro"}
+	case constant.ChannelTypeXiaomiMiMoAPI:
+		return []string{"mimo-v2.6-flash", "mimo-v2.6-pro", "mimo-v2.6-pro-ultraspeed"}
+	case constant.ChannelTypeSenseNova:
+		return []string{"sensenova-6.8-flash-lite", "sensenova-6.8-flash"}
 	default:
 		return ModelList
 	}
@@ -824,6 +830,10 @@ func (a *Adaptor) GetChannelName() string {
 		return xinference.ChannelName
 	case constant.ChannelTypeOpenRouter:
 		return openrouter.ChannelName
+	case constant.ChannelTypeXiaomiMiMoPlan, constant.ChannelTypeXiaomiMiMoAPI:
+		return "xiaomimimo"
+	case constant.ChannelTypeSenseNova:
+		return "sensenova"
 	default:
 		return ChannelName
 	}

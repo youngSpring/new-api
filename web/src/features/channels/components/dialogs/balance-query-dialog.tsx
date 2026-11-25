@@ -36,6 +36,11 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { createServerError } from '@/lib/server-error-message'
 
 import { getCodexUsage, updateChannelBalance } from '../../api'
+import {
+  CHANNEL_TYPE_DEEPSEEK,
+  CHANNEL_TYPE_MINIMAX,
+  CHANNEL_TYPE_XIAOMI_MIMO_PLAN,
+} from '../../constants'
 import { channelsQueryKeys } from '../../lib'
 import { formatChannelBalanceSummary } from '../../lib/channel-balance'
 import { ChannelBalanceDetails } from '../channel-balance-details'
@@ -141,12 +146,21 @@ export function BalanceQueryDialog(props: BalanceQueryDialogProps) {
 
   // The detail is the upstream's own currency and limits, kept on the row.
   const formatBalance = (bal: number) =>
-    formatChannelBalanceSummary(currentRow.balance_detail, bal, {
-      digitsLarge: 2,
-      digitsSmall: 4,
-      abbreviate: false,
-      locale: toIntlLocale(i18n.resolvedLanguage || i18n.language),
-    })
+    formatChannelBalanceSummary(
+      currentRow.balance_detail,
+      currentRow.type === CHANNEL_TYPE_MINIMAX ||
+        currentRow.type === CHANNEL_TYPE_XIAOMI_MIMO_PLAN
+        ? null
+        : bal,
+      {
+        digitsLarge: 2,
+        digitsSmall: 4,
+        abbreviate: false,
+        originalCurrency: currentRow.type === CHANNEL_TYPE_DEEPSEEK,
+        quotaRemaining: currentRow.type === CHANNEL_TYPE_MINIMAX,
+        locale: toIntlLocale(i18n.resolvedLanguage || i18n.language),
+      }
+    )
 
   const formatDate = (timestamp: number) => {
     if (!timestamp) return 'Never'

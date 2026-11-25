@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay/channel/advancedcustom"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -279,7 +280,7 @@ func updateChannelSiliconFlowBalance(channel *model.Channel) (float64, error) {
 	return balance, nil
 }
 
-func getDeepSeekBalanceUSD(response DeepSeekUsageResponse, usdExchangeRate float64) (float64, error) {
+func getDeepSeekBalance(response DeepSeekUsageResponse, usdExchangeRate float64) (channelBalanceResult, error) {
 	var usdBalance *string
 	var cnyBalance *string
 
@@ -300,70 +301,70 @@ func getDeepSeekBalanceUSD(response DeepSeekUsageResponse, usdExchangeRate float
 	if usdBalance != nil {
 		balance, err := strconv.ParseFloat(*usdBalance, 64)
 		if err != nil {
-			return 0, err
+			return channelBalanceResult{}, err
 		}
 		if math.IsNaN(balance) || math.IsInf(balance, 0) {
-			return 0, errors.New("USD balance must be finite")
+			return channelBalanceResult{}, errors.New("USD balance must be finite")
 		}
 		if balance < 0 {
-			return 0, errors.New("USD balance must be non-negative")
+			return channelBalanceResult{}, errors.New("USD balance must be non-negative")
 		}
-		if balance > 0 {
-			return balance, nil
+		if balance > 0 || cnyBalance == nil {
+			return channelBalanceResult{Balance: balance, Detail: &model.ChannelBalanceDetail{
+				BalanceResult: jsplugin.BalanceResult{Amount: &balance, Currency: "USD"},
+			}}, nil
 		}
 	}
 	if cnyBalance == nil {
-		// An empty USD wallet is a valid balance. Only report a missing
-		// currency when the response carried neither USD nor CNY.
-		if usdBalance != nil {
-			return 0, nil
-		}
-		return 0, errors.New("currency USD or CNY not found")
+		return channelBalanceResult{}, errors.New("currency USD or CNY not found")
 	}
 	if math.IsNaN(usdExchangeRate) || math.IsInf(usdExchangeRate, 0) {
-		return 0, errors.New("USD exchange rate must be finite")
+		return channelBalanceResult{}, errors.New("USD exchange rate must be finite")
 	}
 	if usdExchangeRate <= 0 {
-		return 0, errors.New("USD exchange rate must be greater than zero")
+		return channelBalanceResult{}, errors.New("USD exchange rate must be greater than zero")
 	}
 
 	balanceCNY, err := strconv.ParseFloat(*cnyBalance, 64)
 	if err != nil {
-		return 0, err
+		return channelBalanceResult{}, err
 	}
 	if math.IsNaN(balanceCNY) || math.IsInf(balanceCNY, 0) {
-		return 0, errors.New("CNY balance must be finite")
+		return channelBalanceResult{}, errors.New("CNY balance must be finite")
 	}
 	if balanceCNY < 0 {
-		return 0, errors.New("CNY balance must be non-negative")
+		return channelBalanceResult{}, errors.New("CNY balance must be non-negative")
 	}
 	balanceUSD := decimal.NewFromFloat(balanceCNY).Div(decimal.NewFromFloat(usdExchangeRate)).InexactFloat64()
 	if math.IsNaN(balanceUSD) || math.IsInf(balanceUSD, 0) {
-		return 0, errors.New("converted USD balance must be finite")
+		return channelBalanceResult{}, errors.New("converted USD balance must be finite")
 	}
 	if balanceUSD < 0 {
-		return 0, errors.New("converted USD balance must be non-negative")
+		return channelBalanceResult{}, errors.New("converted USD balance must be non-negative")
 	}
-	return balanceUSD, nil
+	return channelBalanceResult{Balance: balanceUSD, Detail: &model.ChannelBalanceDetail{
+		BalanceResult: jsplugin.BalanceResult{Amount: &balanceCNY, Currency: "CNY"},
+	}}, nil
 }
 
-func updateChannelDeepSeekBalance(channel *model.Channel) (float64, error) {
-	url := "https://api.deepseek.com/user/balance"
-	body, err := GetResponseBody("GET", url, channel, GetAuthHeader(channel.Key))
+func updateChannelDeepSeekBalance(channel *model.Channel) (channelBalanceResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	body, err := fetchChannelBalanceBody(ctx, channel, "https://api.deepseek.com/user/balance")
 	if err != nil {
-		return 0, err
+		return channelBalanceResult{}, err
 	}
 	response := DeepSeekUsageResponse{}
 	err = common.Unmarshal(body, &response)
 	if err != nil {
-		return 0, err
+		return channelBalanceResult{}, err
 	}
-	balance, err := getDeepSeekBalanceUSD(response, operation_setting.USDExchangeRate)
+	result, err := getDeepSeekBalance(response, operation_setting.USDExchangeRate)
 	if err != nil {
-		return 0, err
+		return channelBalanceResult{}, err
 	}
-	channel.UpdateBalance(balance)
-	return balance, nil
+	channel.UpdateBalance(result.Balance)
+	return result, nil
 }
 
 func updateChannelAIGC2DBalance(channel *model.Channel) (float64, error) {
@@ -629,14 +630,25 @@ func fetchAdvancedCustomBalance(channel *model.Channel) (channelBalanceResult, e
 func updateChannelBalance(channel *model.Channel) (channelBalanceResult, error) {
 	var result channelBalanceResult
 	var err error
-	if channel.Type == constant.ChannelTypeAdvancedCustom {
+	switch channel.Type {
+	case constant.ChannelTypeAdvancedCustom:
 		result, err = fetchAdvancedCustomBalance(channel)
-	} else {
+	case constant.ChannelTypeDeepSeek:
+		result, err = updateChannelDeepSeekBalance(channel)
+	case constant.ChannelTypeMiniMax:
+		result.Balance = channel.Balance
+		result.Detail, err = fetchMiniMaxPlanBalance(channel)
+	case constant.ChannelTypeXiaomiMiMoPlan, constant.ChannelTypeXiaomiMiMoAPI:
+		result.Balance = channel.Balance
+		result.Detail, err = fetchXiaomiMiMoBalance(channel)
+	default:
 		var balance float64
 		balance, err = updateStandardChannelBalance(channel)
 		result = channelBalanceResult{Balance: balance}
 	}
-	result.Detail = recordBuiltinBalance(channel, result, err)
+	if stored := recordBuiltinBalance(channel, result, err); stored != nil || err != nil {
+		result.Detail = stored
+	}
 	return result, err
 }
 
@@ -664,8 +676,6 @@ func updateStandardChannelBalance(channel *model.Channel) (float64, error) {
 		return updateChannelAIGC2DBalance(channel)
 	case constant.ChannelTypeSiliconFlow:
 		return updateChannelSiliconFlowBalance(channel)
-	case constant.ChannelTypeDeepSeek:
-		return updateChannelDeepSeekBalance(channel)
 	case constant.ChannelTypeOpenRouter:
 		return updateChannelOpenRouterBalance(channel)
 	case constant.ChannelTypeMoonshot:

@@ -52,7 +52,7 @@ import {
   formatQuotaWithCurrency,
   getCurrencyLabel,
 } from '@/lib/currency'
-import { formatTimestampToDate } from '@/lib/format'
+import { formatNumber, formatTimestampToDate } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import {
   createServerError,
@@ -63,9 +63,12 @@ import { truncateText } from '@/lib/utils'
 import { getCodexUsage, updateChannelBalance } from '../api'
 import {
   CHANNEL_STATUS_CONFIG,
+  CHANNEL_TYPE_DEEPSEEK,
+  CHANNEL_TYPE_MINIMAX,
   CHANNEL_TYPE_TASK_PLUGIN,
   CHANNEL_TYPE_VLLM,
   CHANNEL_TYPE_SGLANG,
+  CHANNEL_TYPE_XIAOMI_MIMO_PLAN,
 } from '../constants'
 import {
   useChannelBalanceQueryable,
@@ -90,6 +93,7 @@ import {
   type TagRow,
 } from '../lib'
 import {
+  formatChannelBalanceAmount,
   formatChannelBalanceSummary,
   getChannelBalanceUsedPercent,
 } from '../lib/channel-balance'
@@ -358,10 +362,14 @@ export function BalanceCell({ channel }: { channel: Channel }) {
   const balanceQueryable = useChannelBalanceQueryable(channel)
   const detail = channel.balance_detail
   const usedPercent = getChannelBalanceUsedPercent(detail?.windows)
+  const isMiniMaxPlan = channel.type === CHANNEL_TYPE_MINIMAX
+  const isMiMoPlan = channel.type === CHANNEL_TYPE_XIAOMI_MIMO_PLAN
+  const isPlan = isMiniMaxPlan || isMiMoPlan
+  const originalCurrency = channel.type === CHANNEL_TYPE_DEEPSEEK
   const ownCurrency =
     detail?.amount != null &&
     Boolean(detail.currency?.trim()) &&
-    detail.currency?.trim().toUpperCase() !== 'USD'
+    (originalCurrency || detail.currency?.trim().toUpperCase() !== 'USD')
   const [isUpdating, setIsUpdating] = useState(false)
   const [rawBalanceResponse, setRawBalanceResponse] = useState<string | null>(
     null
@@ -379,10 +387,12 @@ export function BalanceCell({ channel }: { channel: Channel }) {
     digitsLarge: 2,
     digitsSmall: 4,
     abbreviate: false,
+    originalCurrency,
+    quotaRemaining: isMiniMaxPlan,
     showSymbol: layout !== 'card',
   } as const
   // Precise values are kept for the tooltip; long values are shown compactly inline.
-  const usedFull = withSuffix(
+  const legacyUsedFull = withSuffix(
     formatQuotaWithCurrency(usedQuota, {
       digitsLarge: 2,
       digitsSmall: 4,
@@ -390,8 +400,8 @@ export function BalanceCell({ channel }: { channel: Channel }) {
       showSymbol: layout !== 'card',
     })
   )
-  const usedDisplay =
-    usedFull.length > MAX_INLINE_BALANCE_CHARS
+  const legacyUsedDisplay =
+    legacyUsedFull.length > MAX_INLINE_BALANCE_CHARS
       ? withSuffix(
           formatQuotaWithCurrency(usedQuota, {
             compact: true,
@@ -399,7 +409,35 @@ export function BalanceCell({ channel }: { channel: Channel }) {
             showSymbol: layout !== 'card',
           })
         )
-      : usedFull
+      : legacyUsedFull
+  const creditWindow = isMiMoPlan
+    ? detail?.windows?.find((window) => window.unit === 'Credits')
+    : undefined
+  let usedFull = legacyUsedFull
+  let usedDisplay = legacyUsedDisplay
+  if (isPlan) {
+    usedFull = '-'
+    usedDisplay = '-'
+    if (creditWindow) {
+      usedFull = formatChannelBalanceAmount(
+        creditWindow.used,
+        creditWindow.unit,
+        {
+          locale,
+        }
+      )
+      usedDisplay =
+        usedFull.length > MAX_INLINE_BALANCE_CHARS
+          ? formatChannelBalanceAmount(creditWindow.used, creditWindow.unit, {
+              compact: true,
+              locale,
+            })
+          : usedFull
+    } else if (isMiniMaxPlan && usedPercent !== null) {
+      usedFull = `${formatNumber(usedPercent, locale)}%`
+      usedDisplay = usedFull
+    }
+  }
   let remainingFull = withSuffix(
     formatCurrencyFromUSD(balance, balanceFormatOptions)
   )
@@ -413,7 +451,7 @@ export function BalanceCell({ channel }: { channel: Channel }) {
           })
         )
       : remainingFull
-  if (!balanceQueryable) {
+  if (!balanceQueryable || (isPlan && !detail)) {
     remainingFull = '-'
     remainingDisplay = '-'
   } else if (
@@ -432,6 +470,8 @@ export function BalanceCell({ channel }: { channel: Channel }) {
         ? formatChannelBalanceSummary(detail, balance, {
             compact: true,
             locale,
+            originalCurrency,
+            quotaRemaining: isMiniMaxPlan,
           })
         : remainingFull
   }
@@ -511,7 +551,14 @@ export function BalanceCell({ channel }: { channel: Channel }) {
             balance: formatChannelBalanceSummary(
               response.balance_detail,
               response.balance,
-              { digitsLarge: 2, digitsSmall: 4, abbreviate: false, locale }
+              {
+                digitsLarge: 2,
+                digitsSmall: 4,
+                abbreviate: false,
+                locale,
+                originalCurrency,
+                quotaRemaining: isMiniMaxPlan,
+              }
             ),
           })
         )
@@ -553,7 +600,7 @@ export function BalanceCell({ channel }: { channel: Channel }) {
     remainingBadgeVariant = 'neutral'
   } else if (detail?.unlimited) {
     remainingBadgeVariant = 'success'
-  } else if (detail?.amount == null && usedPercent !== null) {
+  } else if ((isPlan || detail?.amount == null) && usedPercent !== null) {
     remainingBadgeVariant = 'success'
     if (usedPercent >= 70) remainingBadgeVariant = 'warning'
     if (usedPercent >= 90) remainingBadgeVariant = 'danger'

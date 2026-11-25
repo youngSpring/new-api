@@ -23,6 +23,7 @@ import { useStatus } from '@/hooks/use-status'
 
 import { AuthLayout } from '../auth-layout'
 import { TermsFooter } from '../components/terms-footer'
+import { SignInVisual } from './components/sign-in-visual'
 import { UserAuthForm } from './components/user-auth-form'
 
 export function SignIn() {
@@ -31,7 +32,7 @@ export function SignIn() {
   const { status } = useStatus()
 
   return (
-    <AuthLayout>
+    <AuthLayout visual={<SignInVisual />}>
       <div className='w-full space-y-8'>
         <div className='space-y-2'>
           <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>

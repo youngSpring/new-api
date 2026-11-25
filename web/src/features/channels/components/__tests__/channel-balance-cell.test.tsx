@@ -27,6 +27,10 @@ import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import type { TaskPluginOption } from '../../api'
+import {
+  CHANNEL_TYPE_MINIMAX,
+  CHANNEL_TYPE_XIAOMI_MIMO_PLAN,
+} from '../../constants'
 import { channelSchema, type ChannelBalanceDetail } from '../../types'
 import { BalanceCell } from '../channels-columns'
 import { ChannelsProvider } from '../channels-provider'
@@ -138,6 +142,43 @@ test('an unlimited balance says so', async () => {
   )
 
   expect(await screen.findByText('Unlimited')).toBeInTheDocument()
+})
+
+test('MiMo Token Plan shows upstream used and remaining credits', async () => {
+  const base = pluginChannel('with-balance', {
+    amount: 20162562008,
+    currency: 'Credits',
+    unlimited: false,
+    windows: [
+      {
+        name: 'Token Plan',
+        used: 29037437992,
+        limit: 49200000000,
+        unit: 'Credits',
+      },
+    ],
+  })
+  renderCell({ ...base, type: CHANNEL_TYPE_XIAOMI_MIMO_PLAN, used_quota: 0 })
+
+  expect(await screen.findByText('29B Credits')).toBeVisible()
+  expect(screen.getByText('20.2B Credits')).toBeVisible()
+  expect(screen.queryByText('0')).not.toBeInTheDocument()
+})
+
+test('MiniMax shows used and remaining percentages from the fullest plan window', async () => {
+  const base = pluginChannel('with-balance', {
+    amount: null,
+    currency: '',
+    unlimited: false,
+    windows: [
+      { name: '5-hour quota', used: 25, limit: 100, unit: '%' },
+      { name: 'Weekly quota', used: 97.25, limit: 100, unit: '%' },
+    ],
+  })
+  renderCell({ ...base, type: CHANNEL_TYPE_MINIMAX })
+
+  expect(await screen.findByText('97.25%')).toBeVisible()
+  expect(screen.getByText('2.75%')).toBeVisible()
 })
 
 test('a balance of limits only shows its fullest limit, and the hover lists every limit, the update time and the last error', async () => {

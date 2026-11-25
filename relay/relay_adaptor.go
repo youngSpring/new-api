@@ -58,7 +58,7 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &baidu.Adaptor{}
 	case constant.APITypeGemini:
 		return &gemini.Adaptor{}
-	case constant.APITypeOpenAI:
+	case constant.APITypeOpenAI, constant.APITypeXiaomiMiMo, constant.APITypeSenseNova:
 		return &openai.Adaptor{}
 	case constant.APITypePaLM:
 		return &palm.Adaptor{}

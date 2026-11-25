@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -32,6 +33,36 @@ const balanceUpdateConcurrency = 4
 // maxBalanceErrorRunes bounds the failure message a balance detail keeps.
 const maxBalanceErrorRunes = 512
 
+func fetchChannelBalanceBody(ctx context.Context, channel *model.Channel, endpoint string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, common.NewMessage("Upstream request failed")
+	}
+	req.Header = GetAuthHeader(strings.TrimSpace(channel.Key))
+	req.Header.Set("Accept", "application/json")
+	setting := channel.GetSetting()
+	client, err := service.GetHttpClientWithProxySettings(setting.Proxy, setting)
+	if err != nil {
+		return nil, common.NewMessage("Upstream request failed")
+	}
+	balanceClient := *client
+	balanceClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := balanceClient.Do(req)
+	if err != nil {
+		return nil, common.NewMessage("Upstream request failed")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	const maxBalanceBody = 64 << 10
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBalanceBody+1))
+	if err != nil || len(body) > maxBalanceBody {
+		return nil, common.NewMessage("Upstream request failed")
+	}
+	return body, nil
+}
+
 func usdBalance(result jsplugin.BalanceResult) (float64, bool) {
 	return service.PluginBalanceUSD(result)
 }
@@ -42,16 +73,17 @@ func emptyBalance(result jsplugin.BalanceResult) bool {
 	return result.Amount != nil && !result.Unlimited && !math.IsNaN(*result.Amount) && !math.IsInf(*result.Amount, 0) && *result.Amount <= 0
 }
 
-// recordBuiltinBalance stores the detail of a built-in balance query, whose
-// function already wrote the USD balance: the amount in USD, or the failure
-// once the channel has a detail. A channel type without a balance query thus
-// keeps no detail.
+// recordBuiltinBalance stores a structured provider balance, a legacy USD
+// balance, or the last failure when a previous balance is available.
 func recordBuiltinBalance(channel *model.Channel, result channelBalanceResult, err error) *model.ChannelBalanceDetail {
 	if err == nil && result.RawResponse != "" {
 		return nil
 	}
 	detail, updateErr := model.UpdateChannelBalanceDetail(channel.Id, func(stored *model.ChannelBalanceDetail) (*model.ChannelBalanceDetail, *float64) {
 		if err == nil {
+			if result.Detail != nil {
+				return result.Detail, nil
+			}
 			balance := result.Balance
 			return &model.ChannelBalanceDetail{BalanceResult: jsplugin.BalanceResult{Amount: &balance, Currency: "USD"}}, nil
 		}
@@ -219,7 +251,11 @@ func updateBalanceInRun(channel *model.Channel) {
 	result, err := withBalanceTimeout(func() (channelBalanceResult, error) {
 		return updateChannelBalance(channel)
 	})
-	if err == nil && result.RawResponse == "" && emptyBalance(jsplugin.BalanceResult{Amount: &result.Balance}) {
+	balance := jsplugin.BalanceResult{Amount: &result.Balance}
+	if result.Detail != nil {
+		balance = result.Detail.BalanceResult
+	}
+	if err == nil && result.RawResponse == "" && emptyBalance(balance) {
 		service.DisableChannel(*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, "", channel.GetAutoBan()), "Insufficient balance")
 	}
 }

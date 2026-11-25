@@ -61,6 +61,9 @@ const (
 	ChannelTypeTaskPlugin     = 61
 	ChannelTypeVLLM           = 62
 	ChannelTypeSGLang         = 63
+	ChannelTypeXiaomiMiMoPlan = 64
+	ChannelTypeXiaomiMiMoAPI  = 65
+	ChannelTypeSenseNova      = 66
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -132,6 +135,9 @@ var ChannelBaseURLs = []string{
 	"",                                          //61
 	"",                                          //62
 	"",                                          //63
+	"https://token-plan-cn.xiaomimimo.com",      //64
+	"https://api.xiaomimimo.com",                //65
+	"https://token.sensenova.cn",                //66
 }
 
 func GetChannelBaseURL(channelType int) string {
@@ -202,6 +208,9 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeTaskPlugin:     "Task Plugin",
 	ChannelTypeVLLM:           "vLLM",
 	ChannelTypeSGLang:         "SGLang",
+	ChannelTypeXiaomiMiMoPlan: "Xiaomi MiMo Token Plan",
+	ChannelTypeXiaomiMiMoAPI:  "Xiaomi MiMo Pay-as-you-go API",
+	ChannelTypeSenseNova:      "SenseNova",
 }
 
 func GetChannelTypeName(channelType int) string {

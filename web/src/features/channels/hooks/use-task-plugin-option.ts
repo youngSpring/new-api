@@ -27,7 +27,11 @@ import { requireServerSuccess } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getTaskPluginOptions } from '../api'
-import { CHANNEL_TYPE_TASK_PLUGIN, MODEL_FETCHABLE_TYPES } from '../constants'
+import {
+  CHANNEL_TYPE_SENSENOVA,
+  CHANNEL_TYPE_TASK_PLUGIN,
+  MODEL_FETCHABLE_TYPES,
+} from '../constants'
 import { parseChannelSettings } from '../lib/channel-utils'
 import type { Channel } from '../types'
 
@@ -77,10 +81,8 @@ export function useChannelModelFetchable(
 }
 
 /**
- * Whether a channel's balance can be queried: always for a built-in channel
- * type, which the server answers for, and for a plugin channel only when its
- * plugin can query one. Without the bind permission the plugin's abilities
- * are unknown, so the action stays and the server answers.
+ * Whether the balance query action is available. SenseNova has no documented
+ * balance endpoint. For plugins, the server answers if capabilities are unknown.
  */
 export function useChannelBalanceQueryable(
   channel: Pick<Channel, 'type' | 'setting'>
@@ -92,8 +94,9 @@ export function useChannelBalanceQueryable(
       : undefined
   const plugin = useTaskPluginOption(pluginKey)
   return (
-    channel.type !== CHANNEL_TYPE_TASK_PLUGIN ||
-    !canBind ||
-    plugin?.balance === true
+    channel.type !== CHANNEL_TYPE_SENSENOVA &&
+    (channel.type !== CHANNEL_TYPE_TASK_PLUGIN ||
+      !canBind ||
+      plugin?.balance === true)
   )
 }

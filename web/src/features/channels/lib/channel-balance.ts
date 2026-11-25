@@ -23,9 +23,14 @@ import {
   getCurrencyFractionDigits,
   type CurrencyFormatOptions,
 } from '@/lib/currency'
-import { formatNumber } from '@/lib/format'
+import { formatCompactNumber, formatNumber } from '@/lib/format'
 
 import type { ChannelBalanceResult, ChannelBalanceWindow } from '../types'
+
+type ChannelBalanceFormatOptions = CurrencyFormatOptions & {
+  originalCurrency?: boolean
+  quotaRemaining?: boolean
+}
 
 /**
  * A balance amount in the currency the upstream reports it in. A USD amount
@@ -36,10 +41,10 @@ import type { ChannelBalanceResult, ChannelBalanceWindow } from '../types'
 export function formatChannelBalanceAmount(
   amount: number,
   currency: string | null | undefined,
-  options: CurrencyFormatOptions = {}
+  options: ChannelBalanceFormatOptions = {}
 ): string {
   const code = currency?.trim() || 'USD'
-  if (code.toUpperCase() === 'USD') {
+  if (code.toUpperCase() === 'USD' && !options.originalCurrency) {
     return formatCurrencyFromUSD(amount, options)
   }
   try {
@@ -53,7 +58,8 @@ export function formatChannelBalanceAmount(
         : getCurrencyFractionDigits(amount, options),
     }).format(amount)
   } catch {
-    return `${formatNumber(amount, options.locale)} ${code}`
+    const format = options.compact ? formatCompactNumber : formatNumber
+    return `${format(amount, options.locale)} ${code}`
   }
 }
 
@@ -64,7 +70,7 @@ export function getChannelBalanceUsedPercent(
   let percent: number | null = null
   for (const window of windows ?? []) {
     if (!(window.limit > 0)) continue
-    const used = Math.round((window.used / window.limit) * 100)
+    const used = (window.used / window.limit) * 100
     percent = Math.max(percent ?? 0, used)
   }
   return percent
@@ -76,8 +82,8 @@ export function getChannelBalanceUsedPercent(
  */
 export function formatChannelBalanceSummary(
   result: ChannelBalanceResult | null | undefined,
-  usdBalance: number,
-  options: CurrencyFormatOptions = {}
+  usdBalance: number | null,
+  options: ChannelBalanceFormatOptions = {}
 ): string {
   if (result?.unlimited) return i18next.t('Unlimited')
   if (result?.amount != null) {
@@ -85,7 +91,10 @@ export function formatChannelBalanceSummary(
   }
   const percent = getChannelBalanceUsedPercent(result?.windows)
   if (result && percent !== null) {
-    return i18next.t('{{percent}}% used', { percent })
+    if (options.quotaRemaining) {
+      return `${formatNumber(Math.max(0, 100 - percent), options.locale)}%`
+    }
+    return i18next.t('{{percent}}% used', { percent: Math.round(percent) })
   }
   return formatCurrencyFromUSD(usdBalance, options)
 }
